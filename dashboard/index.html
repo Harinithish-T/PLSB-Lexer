@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predictive Lexical Analyzer — PLSB Lexer</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @keyframes plsb-spin {
+            to { transform: rotate(360deg); }
+        }
+        /* Full-screen loading overlay */
+        #analyzeLoadingOverlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9000;
+            background: rgba(2, 6, 23, 0.72);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            align-items: center;
+            justify-content: center;
+        }
+        #analyzeLoadingOverlay.active {
+            display: flex;
+        }
+        /* Animated arrow between prediction cards */
+        @keyframes plsb-arrow-slide {
+            0%   { transform: translateX(-4px); opacity: 0.55; }
+            50%  { transform: translateX(4px);  opacity: 1;    }
+            100% { transform: translateX(-4px); opacity: 0.55; }
+        }
+        .pred-arrow-animated {
+            animation: plsb-arrow-slide 1.4s ease-in-out infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .pred-arrow-animated { animation: none; opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Navigation matching Friend's Dashboard -->
+    <header class="app-header">
+        <div class="header-inner">
+            <div class="brand-block">
+                <div class="brand-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="16 18 22 12 16 6"></polyline>
+                        <polyline points="8 6 2 12 8 18"></polyline>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <h1>Predictive Lexical Analyzer</h1>
+                    <p>Predictive Lexeme Spill Buffering • Input Buffering • Program Statistics • Token Frequency • PLSB Algorithm</p>
+                </div>
+            </div>
+            <div class="header-badges">
+                <span id="oracleBadge" class="badge badge-green">✓ Equivalence Oracle Verified</span>
+                <span id="statusBadge" class="badge badge-blue">● Engine Ready</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Bar matching Friend's Dashboard -->
+    <nav class="app-nav">
+        <div class="nav-container">
+            <button class="nav-tab active" data-tab="analyzer">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
+                <span>Analyzer</span>
+            </button>
+            <button class="nav-tab" data-tab="buffer">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                <span>Buffer Visualization</span>
+            </button>
+            <button class="nav-tab" data-tab="statistics">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                <span>Token Statistics</span>
+            </button>
+            <button class="nav-tab" data-tab="algorithm">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <span>PLSB Algorithm</span>
+            </button>
+            <button class="nav-tab" data-tab="plsb">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                <span>PLSB Comparison</span>
+            </button>
+            <button class="nav-tab" data-tab="about">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>About</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <main class="main-wrapper">
+
+        <!-- ========================================== -->
+        <!-- TAB 1: ANALYZER                           -->
+        <!-- ========================================== -->
+        <section id="pane-analyzer" class="tab-pane active">
+            <!-- 4 Top KPI Cards (Tokens, Unique, Keywords, Accuracy) -->
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div>
+                        <div class="kpi-label">TOKENS</div>
+                        <div id="kpiTotalTokens" class="kpi-value">—</div>
+                    </div>
+                    <div class="kpi-icon" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa;">#</div>
+                </div>
+                <div class="kpi-card">
+                    <div>
+                        <div class="kpi-label">UNIQUE</div>
+                        <div id="kpiUniqueTokens" class="kpi-value">—</div>
+                    </div>
+                    <div class="kpi-icon" style="background: rgba(168, 85, 247, 0.2); color: #c084fc;">★</div>
+                </div>
+                <div class="kpi-card">
+                    <div>
+                        <div class="kpi-label">KEYWORDS</div>
+                        <div id="kpiKeywords" class="kpi-value">—</div>
+                    </div>
+                    <div class="kpi-icon" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">🔑</div>
+                </div>
+                <div class="kpi-card" title="Next-token type prediction accuracy across the token stream.">
+                    <div>
+                        <div class="kpi-label">ACCURACY</div>
+                        <div id="kpiAccuracy" class="kpi-value">—</div>
+                        <div id="kpiAccuracyHint" class="kpi-hint">Next-token type · unavailable</div>
+                    </div>
+                    <div class="kpi-icon" style="background: rgba(6, 182, 212, 0.2); color: #22d3ee;">%</div>
+                </div>
+            </div>
+
+            <!-- Source Code Editor Section -->
+            <div class="glass-card" style="padding: 0; overflow: hidden; margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border-subtle); background: rgba(15, 23, 42, 0.85);">
+                    <span style="font-weight: 600; font-size: 0.9rem; color: white;">Source Code</span>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button id="btnClearCode" class="btn-secondary" style="font-size: 0.75rem;">Clear</button>
+                        <button id="btnExample1" class="btn-secondary" style="font-size: 0.75rem;">Example 1</button>
+                        <button id="btnExample2" class="btn-secondary" style="font-size: 0.75rem;">Example 2</button>
+                        <button id="btnAnalyzeCode" class="btn-primary" style="font-size: 0.78rem;">▶ Analyze Code</button>
+                    </div>
+                </div>
+                <textarea id="sourceCodeInput" class="code-editor" spellcheck="false" placeholder="Enter source code here..."></textarea>
+            </div>
+
+            <!-- Analysis status / warning banner -->
+            <div id="analysisMessage" class="analysis-banner" style="display: none; margin-bottom: 1.25rem;"></div>
+
+            <!-- Initial State Placeholder Panel (Visible only when not analyzed) -->
+            <div id="analyzerPlaceholderPanel" class="glass-card" style="text-align: center; padding: 2.25rem 1.5rem; margin-bottom: 1.25rem;">
+                <p style="color: var(--text-muted); font-size: 0.9rem;">
+                    Enter source code and click <strong style="color: #60a5fa;">Analyze Code</strong> to begin lexical analysis.
+                </p>
+            </div>
+
+            <!-- Analyzed State Content (Hidden initially, shown after analysis) -->
+            <div id="analyzerResultsContainer" style="display: none;">
+
+                <!-- Program Statistics Section -->
+                <div class="glass-card" style="margin-bottom: 1.25rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                        <h3 style="font-size: 1rem; font-weight: 600; color: white;">Program Statistics</h3>
+                        <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                            <button id="btnExportTokensCsv" class="btn-secondary" style="font-size: 0.72rem; padding: 0.35rem 0.65rem;">Token Table (CSV)</button>
+                            <button id="btnExportStatsCsv" class="btn-secondary" style="font-size: 0.72rem; padding: 0.35rem 0.65rem;">Statistics (CSV)</button>
+                            <button id="btnExportTokensJson" class="btn-secondary" style="font-size: 0.72rem; padding: 0.35rem 0.65rem;">Full Report (JSON)</button>
+                        </div>
+                    </div>
+                    <div class="stats-grid-11">
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Total Characters</div>
+                            <div id="statChars" class="stat-cell-value" style="color: #60a5fa;">0</div>
+                        </div>
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Total Lines</div>
+                            <div id="statLines" class="stat-cell-value" style="color: #c084fc;">0</div>
+                        </div>
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Total Tokens</div>
+                            <div id="statTokens" class="stat-cell-value" style="color: #22d3ee;">0</div>
+                        </div>
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Unique Tokens</div>
+                            <div id="statUnique" class="stat-cell-value" style="color: #818cf8;">0</div>
+                        </div>
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Keywords</div>
+                            <div id="statKw" class="stat-cell-value" style="color: #34d399;">0</div>
+                        </div>
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Identifiers</div>
+                            <div id="statId" class="stat-cell-value" style="color: #4ade80;">0</div>
+                        </div>
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Numbers</div>
+                            <div id="statNum" class="stat-cell-value" style="color: #facc15;">0</div>
+                        </div>
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Operators</div>
+                            <div id="statOp" class="stat-cell-value" style="color: #fb923c;">0</div>
+                        </div>
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Delimiters</div>
+                            <div id="statDelim" class="stat-cell-value" style="color: #f472b6;">0</div>
+                        </div>
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Comments</div>
+                            <div id="statCom" class="stat-cell-value" style="color: #94a3b8;">0</div>
+                        </div>
+                        <div class="stat-cell">
+                            <div class="stat-cell-label">Lex Errors</div>
+                            <div id="statErr" class="stat-cell-value" style="color: #f87171;">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Token Table Section -->
+                <div class="glass-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+                        <div>
+                            <h3 style="font-size: 1rem; font-weight: 600; color: white;">Token Table</h3>
+                            <p style="font-size: 0.75rem; color: var(--text-muted);">Emitted lexical token stream with line, column, and length coordinates</p>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+                            <input id="tokenSearchInput" type="text" class="app-input" placeholder="Search tokens..." style="width: 180px; font-size: 0.8rem;">
+                            <select id="tokenFilterType" class="app-select" style="font-size: 0.8rem;">
+                                <option value="ALL">All Types</option>
+                                <option value="KEYWORD">Keywords</option>
+                                <option value="IDENTIFIER">Identifiers</option>
+                                <option value="NUMBER">Numbers</option>
+                                <option value="STRING">Strings</option>
+                                <option value="OPERATOR">Operators</option>
+                                <option value="COMMENT">Comments</option>
+                                <option value="PREPROCESSOR">Preprocessor</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="table-wrapper" style="max-height: 420px; overflow-y: auto;">
+                        <table class="app-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50px;">#</th>
+                                    <th>Lexeme</th>
+                                    <th>Token Type</th>
+                                    <th>Line</th>
+                                    <th>Column</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tokenTableBody">
+                                <tr>
+                                    <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 2rem;">No tokens analyzed yet.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-dim); padding: 0 0.25rem;">
+                        <span>Showing <span id="tokenTableFilteredCount">0</span> of <span id="tokenTableCount">0</span> tokens</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 2: BUFFER VISUALIZATION               -->
+        <!-- ========================================== -->
+        <section id="pane-buffer" class="tab-pane">
+            <div class="glass-card" style="margin-bottom: 1.25rem;">
+                <h2 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 0.35rem; color: white;">Two-Buffer Input Scheme</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.55;">
+                    Compilers use a two-buffer scheme to efficiently read source code. The scanner advances through the active buffer while the other buffer is refilled. When the forward pointer reaches the end of a buffer (size 40), buffers switch and a refill occurs.
+                </p>
+                <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
+                    <button id="btnBufStart" class="btn-primary" style="font-size: 0.8rem;">▶ Start Simulation</button>
+                    <button id="btnBufPlayPause" class="btn-secondary" style="font-size: 0.8rem;">▶ Play</button>
+                    <button id="btnBufNext" class="btn-secondary" style="font-size: 0.8rem;">⏭ Next Character</button>
+                    <button id="btnBufReset" class="btn-secondary" style="font-size: 0.8rem;">🔄 Reset</button>
+                </div>
+            </div>
+
+            <!-- Two Buffer Blocks (Contained, Fixed Dimensions) -->
+            <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.25rem;">
+                <div id="bufBox1" class="buffer-box active">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <span style="font-weight: 700; font-size: 0.85rem; color: white;">BUFFER 1</span>
+                        <span id="bufTag1" class="badge badge-blue">ACTIVE</span>
+                    </div>
+                    <div id="bufCells1" class="buffer-cells" style="overflow-x: auto; max-width: 100%;"></div>
+                </div>
+
+                <div style="display: flex; justify-content: center;">
+                    <div style="background: linear-gradient(90deg, #3b82f6, #a855f7); padding: 0.35rem 1.75rem; border-radius: 9999px; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.1em; color: white; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);">
+                        ↓ SCANNER ↓
+                    </div>
+                </div>
+
+                <div id="bufBox2" class="buffer-box">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <span style="font-weight: 700; font-size: 0.85rem; color: white;">BUFFER 2</span>
+                        <span id="bufTag2" class="badge badge-blue" style="display: none;">ACTIVE</span>
+                    </div>
+                    <div id="bufCells2" class="buffer-cells" style="overflow-x: auto; max-width: 100%;"></div>
+                </div>
+            </div>
+
+            <!-- State Cards Below Buffers (Compact Grid) -->
+            <div class="stats-grid-11" style="grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); margin-bottom: 1.25rem;">
+                <div class="stat-cell">
+                    <div class="stat-cell-label">Active Buffer</div>
+                    <div id="bufMetricActive" class="stat-cell-value" style="color: #60a5fa; font-size: 1.05rem;">Buffer 1</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-cell-label">Char Pointer</div>
+                    <div id="bufMetricCharPtr" class="stat-cell-value" style="font-size: 1.05rem;">0</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-cell-label">Forward Pointer</div>
+                    <div id="bufMetricFwdPtr" class="stat-cell-value" style="font-size: 1.05rem;">0</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-cell-label">Current Char</div>
+                    <div id="bufMetricChar" class="stat-cell-value" style="color: #facc15; font-size: 1.05rem;">—</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-cell-label">Current Lexeme</div>
+                    <div id="bufMetricLexeme" class="stat-cell-value lexeme-display" style="color: #4ade80; font-size: 0.78rem; line-height: 1.25; word-break: break-all; min-height: 1.6rem; display: flex; align-items: center;" title="">—</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-cell-label">Buffer Refills</div>
+                    <div id="bufMetricRefills" class="stat-cell-value" style="font-size: 1.05rem;">0</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-cell-label">Spill Events</div>
+                    <div id="bufMetricSpills" class="stat-cell-value" style="color: #f97316; font-size: 1.05rem;">0</div>
+                </div>
+                <div class="stat-cell">
+                    <div class="stat-cell-label">Spill State</div>
+                    <div id="bufMetricSpillState" class="stat-cell-value" style="color: #94a3b8; font-size: 0.85rem;">IDLE</div>
+                </div>
+            </div>
+
+            <!-- Scanning Progress Bar -->
+            <div class="glass-card">
+                <div class="stat-cell-label">Scanning Position</div>
+                <div style="height: 8px; border-radius: 9999px; background: rgba(51, 65, 85, 0.5); overflow: hidden; margin-top: 0.5rem;">
+                    <div id="bufProgressBar" style="height: 100%; width: 0%; background: linear-gradient(90deg, #3b82f6, #a855f7); transition: width 0.15s;"></div>
+                </div>
+                <div id="bufProgressText" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.4rem;">Character 0 of 0</div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 3: TOKEN STATISTICS                   -->
+        <!-- ========================================== -->
+        <section id="pane-statistics" class="tab-pane">
+            <div class="glass-card" style="margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem;">
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="btnFreqModeType" class="btn-primary" style="font-size: 0.8rem;">Token Type Frequency</button>
+                        <button id="btnFreqModeLexeme" class="btn-secondary" style="font-size: 0.8rem;">Lexeme Frequency</button>
+                    </div>
+                    <div class="badge badge-purple" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;">
+                        Most Frequent: <strong id="freqMostFrequentVal" style="color: white; margin-left: 0.3rem;">—</strong>
+                    </div>
+                </div>
+
+                <!-- Frequency Bar Chart (Contained) -->
+                <div style="position: relative; height: 300px; width: 100%; margin-bottom: 1.5rem;">
+                    <canvas id="freqChartCanvas"></canvas>
+                </div>
+
+                <!-- Frequency Table -->
+                <div class="table-wrapper">
+                    <table class="app-table">
+                        <thead>
+                            <tr>
+                                <th>Token</th>
+                                <th>Frequency</th>
+                                <th>Percentage</th>
+                                <th>Distribution</th>
+                            </tr>
+                        </thead>
+                        <tbody id="freqTableBody">
+                            <tr>
+                                <td colspan="4" style="text-align: center; color: var(--text-dim); padding: 2rem;">Analyze code to display frequency metrics.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 4: PLSB ALGORITHM                     -->
+        <!-- ========================================== -->
+        <section id="pane-algorithm" class="tab-pane">
+            <div class="glass-card" style="margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <div>
+                        <h2 style="font-size: 1.1rem; font-weight: 700; color: white;">PLSB Algorithm</h2>
+                        <p style="font-size: 0.8rem; color: var(--text-muted);">Predictive Lexeme Spill Buffering capacity estimation pipeline</p>
+                    </div>
+                    <div class="badge badge-blue">Production Rule: Combined</div>
+                </div>
+
+                <!-- Algorithm Steps (4 compact cards, plain language) -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                    <div class="stat-cell" style="border-left: 3px solid #3b82f6;">
+                        <div class="stat-cell-label">1. Detect Boundary Spill</div>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem;">
+                            A lexeme exceeds the available input buffer space <code style="color:#93c5fd;">B</code>. The <code style="color:#93c5fd;">L</code> bytes already scanned are copied to the spill buffer.
+                        </p>
+                    </div>
+                    <div class="stat-cell" style="border-left: 3px solid #a855f7;">
+                        <div class="stat-cell-label">2. Estimate Capacity</div>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem;">
+                            Three signals are evaluated: P75 (<code style="color:#93c5fd;">Q</code>), EWMA (<code style="color:#c084fc;">E</code>), and context-conditioned EWMA (<code style="color:#34d399;">M</code>). The maximum becomes <code style="color:#93c5fd;">C_raw</code>.
+                        </p>
+                    </div>
+                    <div class="stat-cell" style="border-left: 3px solid #10b981;">
+                        <div class="stat-cell-label">3. Apply Safety Bound</div>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem;">
+                            The final capacity <code style="color:#93c5fd;">C</code> is clamped to the range <code style="color:#93c5fd;">[16, 4096]</code> and must exceed the scanned length <code style="color:#93c5fd;">L + 1</code>.
+                        </p>
+                    </div>
+                    <div class="stat-cell" style="border-left: 3px solid #facc15;">
+                        <div class="stat-cell-label">4. Allocate and Continue</div>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem;">
+                            The spill buffer is allocated at exactly <code style="color:#facc15;">C</code> bytes. The lexer resumes scanning without reallocation cascade.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Formula panel (step-by-step, plain monospace, no dollar signs) -->
+                <div style="background: rgba(2, 6, 23, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1.25rem; margin-bottom: 1.5rem;">
+                    <h4 style="font-size: 0.85rem; font-weight: 600; color: #60a5fa; margin-bottom: 0.75rem;">Combined Capacity Formula</h4>
+                    <pre class="formula-box" style="margin: 0; background: transparent; border: none; padding: 0;">Step 1 — Estimate initial capacity:
+  Q = P75(class)                           // 75th-percentile of historical class lengths
+  E = ceil(EWMA(class))                    // Exponential moving average (alpha = 0.20)
+  M = ceil(cond_EWMA[prev_class -> class]) // Context-conditioned transition length
+
+Step 2 — Combine the estimates:
+  C_raw = max(Q, E, M)
+
+Step 3 — Apply safety bound:
+  C = clamp(max(C_raw, L_scanned + 1), 16, 4096)</pre>
+                </div>
+
+                <!-- Variable explanations (no dollar signs) -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem;">
+                    <div class="stat-cell">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="font-weight: 700; color: #93c5fd; font-family: var(--font-mono);">Q — P75 Length</span>
+                            <span class="badge badge-blue" style="font-size: 0.68rem;">Robust</span>
+                        </div>
+                        <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.4rem;">
+                            75th percentile of historical lexeme lengths for the current syntactic class. Filters short-token noise; handles typical long lexemes.
+                        </p>
+                    </div>
+                    <div class="stat-cell">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="font-weight: 700; color: #c084fc; font-family: var(--font-mono);">E — EWMA Length</span>
+                            <span class="badge badge-purple" style="font-size: 0.68rem;">Adaptive</span>
+                        </div>
+                        <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.4rem;">
+                            Exponentially weighted moving average of recent lexeme lengths (alpha = 0.20). Adapts quickly to local bursts of long identifiers or comments.
+                        </p>
+                    </div>
+                    <div class="stat-cell">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="font-weight: 700; color: #34d399; font-family: var(--font-mono);">M — Context Length</span>
+                            <span class="badge badge-green" style="font-size: 0.68rem;">Transition</span>
+                        </div>
+                        <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.4rem;">
+                            EWMA conditioned on the prior syntactic class transition (e.g. <code style="color:#6ee7b7;">typedef → identifier</code>). Captures cross-class length patterns.
+                        </p>
+                    </div>
+                    <div class="stat-cell">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="font-weight: 700; color: #facc15; font-family: var(--font-mono);">L + 1 — Safety Floor</span>
+                            <span class="badge badge-amber" style="font-size: 0.68rem;">Invariant</span>
+                        </div>
+                        <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.4rem;">
+                            Guarantees the allocated capacity strictly exceeds the bytes already scanned before the boundary reload. Prevents immediate re-spill.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- NEXT-TOKEN PREDICTION (Markov first-order transition model)  -->
+            <!-- ============================================================ -->
+            <div class="glass-card" style="margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+                    <div>
+                        <h2 style="font-size: 1.1rem; font-weight: 700; color: white;">Next-Token Prediction</h2>
+                        <p style="font-size: 0.8rem; color: var(--text-muted);">First-order Markov model: P(next type&nbsp;|&nbsp;current type) built from observed token-type transitions in the analyzed source.</p>
+                    </div>
+                    <div class="badge badge-purple">Token-Type Predictor</div>
+                </div>
+
+                <!-- NOTE: This predicts the NEXT TOKEN TYPE, not buffer capacity.
+                     Buffer capacity is predicted by the PLSB algorithm above. -->
+
+                <!-- Token selector -->
+                <div style="margin-bottom: 1rem;">
+                    <label for="selectMarkovToken" style="display: block; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.35rem;">Select Current Token Type</label>
+                    <select id="selectMarkovToken" class="app-select" style="width: 100%; max-width: 340px; background: rgba(15,23,42,0.7); border: 1px solid var(--border-subtle); color: white; border-radius: var(--radius-md); padding: 0.45rem 0.75rem; font-size: 0.85rem; outline: none;">
+                        <option value="">Analyze source code to populate</option>
+                    </select>
+                </div>
+
+                <!-- Horizontal prediction flow: [ Current ] >>animated>> [ Predicted ] -->
+                <div style="display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap;">
+                    <!-- Current Token card (left) -->
+                    <div style="flex: 1; min-width: 160px; max-width: 280px; background: rgba(30,41,59,0.75); border: 1px solid rgba(96,165,250,0.4); border-radius: var(--radius-md); padding: 1.1rem 1.25rem; text-align: center;">
+                        <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #60a5fa; margin-bottom: 0.4rem;">Current Token Type</div>
+                        <div id="markovCurrentCard" style="font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; color: #93c5fd; min-height: 1.5rem;">—</div>
+                    </div>
+
+                    <!-- Animated purple > chevron arrow -->
+                    <div class="pred-arrow-animated" style="display: flex; align-items: center; gap: 2px; flex-shrink: 0;">
+                        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 5px rgba(168,85,247,0.55));">
+                            <polyline points="8,6 20,14 8,22" stroke="#a855f7" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg" style="opacity: 0.55; filter: drop-shadow(0 0 3px rgba(168,85,247,0.35));">
+                            <polyline points="8,6 20,14 8,22" stroke="#a855f7" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+
+                    <!-- Predicted Next Token card (right, probability inside) -->
+                    <div style="flex: 1; min-width: 160px; max-width: 280px; background: rgba(30,41,59,0.75); border: 1px solid rgba(168,85,247,0.45); border-radius: var(--radius-md); padding: 1.1rem 1.25rem; text-align: center;">
+                        <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #a855f7; margin-bottom: 0.4rem;">Predicted Next Token</div>
+                        <div id="markovPredictedCard" style="font-family: var(--font-mono); font-size: 1.1rem; font-weight: 700; color: #c084fc; min-height: 1.5rem;">No prediction</div>
+                        <div id="markovProbCard" style="font-size: 0.82rem; color: #34d399; margin-top: 0.35rem; font-weight: 600;">—</div>
+                    </div>
+                </div>
+
+                <!-- Top Candidates pills -->
+                <div style="margin-bottom: 1.25rem;">
+                    <div class="stat-cell-label" style="margin-bottom: 0.5rem;">Top Candidates</div>
+                    <div id="markovTopPills" style="display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 2rem; align-items: center;">
+                        <span style="color: var(--text-dim); font-size: 0.8rem;">Analyze source code to view next-token predictions.</span>
+                    </div>
+                </div>
+
+                <!-- Transition distribution table -->
+                <div>
+                    <div class="stat-cell-label" style="margin-bottom: 0.5rem;">Transition Distribution <span style="font-weight: 400; text-transform: none; letter-spacing: 0;">(filtered to selected current type)</span></div>
+                    <div class="table-wrapper" style="max-height: 300px; overflow-y: auto;">
+                        <table class="app-table">
+                            <thead>
+                                <tr>
+                                    <th>Current Type</th>
+                                    <th>Next Type</th>
+                                    <th>Count</th>
+                                    <th>Probability</th>
+                                </tr>
+                            </thead>
+                            <tbody id="markovTableBody">
+                                <tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 1.5rem;">Analyze source code to view next-token predictions.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 5: PLSB COMPARISON                    -->
+        <!-- ========================================== -->
+        <section id="pane-plsb" class="tab-pane">
+            <div class="glass-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem;">
+                    <div>
+                        <h2 style="font-size: 1.1rem; font-weight: 700; color: white;">PLSB Comparison</h2>
+                        <p style="font-size: 0.8rem; color: var(--text-muted);">One consolidated PLSB algorithm measured against fixed 16B / 32B / 64B baselines</p>
+                    </div>
+                    <button id="btnExportCmpCsv" class="btn-secondary" style="font-size: 0.75rem;">Export CSV</button>
+                </div>
+
+                <!-- Explanatory Context for B Parameter -->
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.85rem 1.1rem; margin-bottom: 1.25rem; font-size: 0.8rem; line-height: 1.5; color: var(--text-muted);">
+                    <strong style="color: #60a5fa;">Experimental Control Note:</strong> The input buffer size <code style="color: #93c5fd; font-family: var(--font-mono);">$B$</code> is an experimental parameter defining when a lexeme crosses a boundary reload. While traditional fixed baselines allocate a static initial heap spill capacity (16B, 32B, or 64B) that reallocates repeatedly on long lexemes, the combined <strong style="color: white;">PLSB algorithm</strong> dynamically predicts the exact required spill capacity from syntactic class history (<code style="color: #a855f7; font-family: var(--font-mono);">$Q$</code>, <code style="color: #c084fc; font-family: var(--font-mono);">$E$</code>, <code style="color: #34d399; font-family: var(--font-mono);">$M$</code>), eliminating reallocation overhead and unnecessary growth copying.
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; background: rgba(2, 6, 23, 0.4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1.25rem;">
+                    <div>
+                        <label style="display: block; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem;">Dataset</label>
+                        <select id="selectCmpDataset" class="app-select" style="width: 100%;">
+                            <option value="CURRENT">Current source in Analyzer</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display: block; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem;">Input buffer size B</label>
+                        <select id="selectCmpBufferSize" class="app-select" style="width: 100%;">
+                            <option value="16">16 bytes</option>
+                            <option value="32" selected>32 bytes</option>
+                            <option value="64">64 bytes</option>
+                            <option value="256">256 bytes</option>
+                            <option value="1024">1024 bytes</option>
+                            <option value="4096">4096 bytes</option>
+                            <option value="16384">16384 bytes</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: flex-end;">
+                        <button id="btnRunComparison" class="btn-primary" style="width: 100%; height: 38px;">Run Comparison</button>
+                    </div>
+                </div>
+
+                <div id="cmpStatus" class="analysis-banner">Choose a dataset and run comparison. Improvement is measured versus Fixed Baseline 16B.</div>
+                <div id="cmpRunMeta" class="kpi-hint" style="margin-bottom: 0.75rem;"></div>
+
+                <div class="table-wrapper" style="margin-bottom: 1.5rem;">
+                    <table class="app-table" id="cmpMetricTable">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Unit</th>
+                                <th>Fixed Baseline 16B</th>
+                                <th>Fixed Baseline 32B</th>
+                                <th>Fixed Baseline 64B</th>
+                                <th>PLSB — Combined</th>
+                                <th>PLSB vs 16B</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cmpTableBody">
+                            <tr>
+                                <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 2rem;">No comparison has been run yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="cmpChartWrap" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem;">
+                    <div style="background: rgba(2, 6, 23, 0.4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem;">
+                        <h4 style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: white;">Spill reallocations (lower is better)</h4>
+                        <div style="position: relative; height: 260px;">
+                            <canvas id="cmpReallocChartCanvas"></canvas>
+                        </div>
+                    </div>
+                    <div style="background: rgba(2, 6, 23, 0.4); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 1rem;">
+                        <h4 style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: white;">Growth-copy bytes (lower is better)</h4>
+                        <div style="position: relative; height: 260px;">
+                            <canvas id="cmpCopyChartCanvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- TAB 6: ABOUT                              -->
+        <!-- ========================================== -->
+        <section id="pane-about" class="tab-pane">
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                <div class="glass-card">
+                    <h3 class="about-title">About This Project</h3>
+                    <p class="about-body">
+                        Predictive Lexeme Spill Buffering (PLSB) compiler research project. This system demonstrates the lexical scanning pipeline with streaming two-buffer input, online empirical token length estimation, and dynamic heap spill buffer pre-allocation.
+                    </p>
+                </div>
+                <div class="glass-card">
+                    <h3 class="about-title">What Is Lexical Analysis?</h3>
+                    <p class="about-body">
+                        Lexical analysis is the initial phase of a compiler. It reads the source code character by character and converts it into a continuous stream of tokens — the smallest meaningful syntactic units of a program (keywords, identifiers, literals, operators).
+                    </p>
+                </div>
+                <div class="glass-card">
+                    <h3 class="about-title">What Is Two-Buffer Input?</h3>
+                    <p class="about-body">
+                        Reading characters individually from disk is inefficient. Compilers use two fixed-size buffers of size $B$. The scanner inspects characters in the active buffer while the companion buffer is refilled asynchronously.
+                    </p>
+                </div>
+                <div class="glass-card">
+                    <h3 class="about-title">What Is Token Frequency?</h3>
+                    <p class="about-body">
+                        Token frequency analysis counts occurrences of each token category and lexeme across source code. This reveals code distribution characteristics, keyword usage density, and statistical patterns in software repositories.
+                    </p>
+                </div>
+                <div class="glass-card">
+                    <h3 class="about-title">How PLSB Predicts Buffer Capacity</h3>
+                    <p class="about-body">
+                        When an uncompleted token crosses a buffer boundary, standard lexers allocate a fixed minimum buffer and repeatedly double it, triggering costly copy cascades. PLSB uses historical class percentiles (P75), moving averages (EWMA), and context transitions to pre-size the heap spill buffer accurately in one allocation.
+                    </p>
+                    <div style="margin-top: 0.75rem;">
+                        <pre class="formula-box" style="margin: 0;">Capacity C = clamp(max(P75, EWMA, cond_EWMA, L_scanned + 1), 16, 4096)</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer matching Friend's Dashboard -->
+    <footer class="app-footer">
+        Predictive Lexical Analyzer — Compiler Design Project • PLSB Lexer
+    </footer>
+
+    <!-- Canvas for legacy endpoint test compatibility (renderReallocsChart) -->
+    <canvas id="mainChartCanvas" style="display: none;"></canvas>
+
+    <!-- Full-screen Analysis Loading Overlay (fixed, covers viewport) -->
+    <div id="analyzeLoadingOverlay">
+        <div style="background: rgba(15, 20, 40, 0.95); border: 1px solid rgba(99,102,241,0.3); border-radius: 16px; padding: 2.5rem 3rem; text-align: center; box-shadow: 0 24px 64px rgba(0,0,0,0.6); min-width: 300px;">
+            <!-- Blue-to-purple gradient spinner -->
+            <div style="position: relative; width: 56px; height: 56px; margin: 0 auto 1.25rem;">
+                <div style="position: absolute; inset: 0; border-radius: 50%; border: 3px solid rgba(99,102,241,0.18);"></div>
+                <div style="position: absolute; inset: 0; border-radius: 50%; border: 3px solid transparent; border-top-color: #6366f1; border-right-color: #a855f7; animation: plsb-spin 0.85s linear infinite;"></div>
+            </div>
+            <div style="font-size: 1.05rem; font-weight: 700; color: white; margin-bottom: 0.4rem; letter-spacing: -0.01em;">Analyzing Source Code</div>
+            <div style="font-size: 0.82rem; color: #64748b;">Tokenizing &#8594; Statistics &#8594; Markov Model</div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

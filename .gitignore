@@ -1,0 +1,26 @@
+# Binaries and object files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build directories
+build/
+bin/
+
+# Temporary / test outputs
+tests/*.log
+results/*.json
+results/*.csv
+!results/.gitkeep
+
+# IDE / OS files
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+__pycache__/
+*.py[cod]

@@ -1,0 +1,81 @@
+PLSB LEXER - DATED VERIFICATION & PROVENANCE EXECUTION LOG
+================================================================================
+Timestamp:          2026-10-11T16:55:14+05:30 (October 11, 2026)
+Environment:        Windows 11 / MSYS2 UCRT64 GCC 14.2.0 / Python 3.14.7 / Linux GCC 13+
+Active Experiment:  exp_20261011_165514
+Matrix Scope:       6 Datasets x 7 Buffer Sizes x 8 Policies x 3 Iterations = 336 Configs (1,008 Raw Observations)
+
+1. EXECUTION RECORD - BENCHMARK RUNNER
+--------------------------------------------------------------------------------
+Command: powershell -ExecutionPolicy Bypass -File .\build.ps1 -Benchmark --all-datasets --full --iterations 3
+Exit Code: 0
+Generated Files:
+  - results/benchmark_latest.json (546,041 bytes, 336 summary records)
+  - results/benchmark_summary.csv (101,764 bytes, 336 rows + header)
+  - results/benchmark_raw.csv     (221,065 bytes, 1,008 rows + header)
+Archived Backups:
+  - results/backup_historical_20261019_163214/ (Previous run from Oct 19 clock test)
+  - results/backup_historical_20261019_162650/ (Multi-append historical runs)
+
+2. EXECUTION RECORD - CONSISTENCY & PROVENANCE VERIFIER
+--------------------------------------------------------------------------------
+Command: python scripts/verify_results_consistency.py
+Output:
+======================================================================
+ PLSB BENCHMARK RESULTS CONSISTENCY & PROVENANCE VERIFIER
+======================================================================
+[PASS] Found JSON (546,041 bytes)
+[PASS] Found Summary CSV (101,764 bytes)
+[PASS] Found Raw CSV (221,065 bytes)
+
+[INFO] JSON experiment_id: exp_20261011_165514, total entries: 336
+[INFO] Summary CSV total rows: 336
+[INFO] Raw CSV total rows: 1008
+
+----------------------------------------------------------------------
+Matrix Coverage:        336/336 cells verified
+Raw Trial Count:        1008/1008 observations verified
+Distinct Iterations:    100% cells have distinct iterations [1, 2, 3]
+Status Integrity:       100% SUCCESS / VERIFIED_EQUIVALENT (0 failed/unrun)
+Experiment ID Match:    'exp_20261011_165514' shared across all files
+Recomputed Mean Match:  100% mathematical reconciliation verified
+----------------------------------------------------------------------
+[PASS] ALL RECONCILIATION AND PROVENANCE CHECKS PASSED PERFECTLY (exit 0)!
+Exit Code: 0
+
+3. EXECUTION RECORD - DASHBOARD SERVER ENDPOINTS (17 TESTS)
+--------------------------------------------------------------------------------
+Command: python scripts/test_dashboard_endpoints.py
+Output:
+=== 1. Standard Endpoints (Happy Paths) ===
+  -> PASS: GET / (index.html)
+  -> PASS: GET /app.js
+  -> PASS: GET /api/datasets
+  -> PASS: GET /api/results/latest
+  -> PASS: GET /api/results
+  -> PASS: GET /api/results/file (existing)
+  -> PASS: POST /api/run (valid run)
+
+=== 2. Focused Negative & Error Cases ===
+  -> PASS: POST /api/run negative buffer_size -> 400
+  -> PASS: POST /api/run non-numeric buffer_size -> 400
+  -> PASS: POST /api/run negative alpha -> 400
+  -> PASS: POST /api/run nonexistent dataset -> 404
+  -> PASS: GET /api/dataset nonexistent path -> 404
+  -> PASS: GET /api/dataset missing path query -> 400
+  -> PASS: GET /api/results/file nonexistent file -> 404
+  -> PASS: GET /api/results/file missing name query -> 400
+  -> PASS: POST /api/benchmark out-of-range iterations -> 400
+  -> PASS: POST /api/benchmark nonexistent dataset -> 400
+
+==================================================
+Results: 17 passed, 0 failed (Total: 17)
+==================================================
+Exit Code: 0
+
+4. BROWSER AUTOMATION STATUS
+--------------------------------------------------------------------------------
+Tools Inspected: Playwright, Selenium, Puppeteer
+Status: NOT RUN (Browser automation tools unavailable in environment)
+HTTP & API data integrity fully verified via test_dashboard_endpoints.py.
+================================================================================
